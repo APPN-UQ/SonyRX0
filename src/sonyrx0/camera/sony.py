@@ -27,6 +27,9 @@ PROP_OBJECT_IN_MEMORY = 0xD215
 PROP_FOCUS_INDICATION = 0xD213
 PRESS, RELEASE = 2, 1
 CAPTURED_IMAGE_HANDLE = 0xFFFFC001
+LIVEVIEW_HANDLE = 0xFFFFC002
+ACCESS_DENIED = 0x200F  # live view: next frame not ready yet
+JPEG_SOI, JPEG_EOI = bytes([0xFF, 0xD8]), bytes([0xFF, 0xD9])
 
 PROP_NAMES = {
     0x5007: "FNumber", 0x500A: "FocusMode", 0x500B: "ExposureMeteringMode", 0x500E: "ExposureProgramMode",
@@ -134,9 +137,26 @@ class RX0:
                 raise RuntimeError("No Sony camera found. Is it on, connected, and set to USB Connection: PC Remote?")
             device_path = found[0]
         self.t = WpdMtp(device_path)
-        self._connect()
+        try:
+            self._connect()
+        except PTPError:
+            # After a session that used live view, the camera rejects the next
+            # handshake as "hung" once; that failure resets it, so reopen and retry.
+            self.t.close()
+            time.sleep(0.5)
+            self.t = WpdMtp(device_path)
+            self._connect()
 
     def close(self):
+        if getattr(self, "_liveview_used", False):
+            # Closing straight after live view leaves the camera "hung" for the next
+            # session (its handshake fails after ~30 s). Letting the stream settle and
+            # finishing with an ordinary request avoids that.
+            time.sleep(0.3)
+            try:
+                self.props()
+            except PTPError:
+                pass
         self.t.close()
 
     def _check(self, code, what):
@@ -265,6 +285,28 @@ class RX0:
         code, _, data = self.t.read(GET_OBJECT, (CAPTURED_IMAGE_HANDLE,))
         self._check(code, "GetObject")
         return name, data
+
+    def liveview_jpeg(self, timeout=1.0):
+        """Latest live-view frame as JPEG bytes (~1024x680, ~25 fps), or None on timeout."""
+        self._liveview_used = True
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            code, _, data = self.t.read(GET_OBJECT, (LIVEVIEW_HANDLE,))
+            if code == OK:
+                start, end = data.find(JPEG_SOI), data.rfind(JPEG_EOI)
+                if start >= 0 and end > start:
+                    return data[start:end + 2]  # Sony prefixes the JPEG with a small header
+            elif code != ACCESS_DENIED:
+                self._check(code, "live view")
+            time.sleep(0.015)
+        return None
+
+    def liveview_frame(self, timeout=1.0):
+        """Latest live-view frame decoded to a BGR array, or None."""
+        import cv2
+        import numpy as np
+        jpg = self.liveview_jpeg(timeout)
+        return None if jpg is None else cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
 
     def capture(self):
         """Trigger and download every resulting file (JPEG, plus RAW if enabled)."""
