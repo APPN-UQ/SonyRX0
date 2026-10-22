@@ -9,7 +9,7 @@ description = "USB control of Sony RX0 cameras (PC Remote, no SDK) plus stereo c
 requires-python = ">=3.10"
 dependencies = [
     "numpy",
-    "opencv-contrib-python>=4.8",
+    "opencv-contrib-python>=4.8,<5",  # tested on 4.10
     "comtypes; sys_platform == 'win32'",
 ]
 
