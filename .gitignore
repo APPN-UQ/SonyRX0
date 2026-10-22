@@ -1,0 +1,11 @@
+__pycache__/
+*.egg-info/
+build/
+
+# Captures, results and per-rig calibration live outside version control
+data/
+captures/
+out/
+*.npz
+rig.json
+wifi_probe.txt

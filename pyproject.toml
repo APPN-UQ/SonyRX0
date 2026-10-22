@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sonyrx0"
+version = "0.1.0"
+description = "USB control of Sony RX0 cameras (PC Remote, no SDK) plus stereo calibration and depth"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "opencv-contrib-python>=4.8",
+    "comtypes; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+trigger = ["pyserial"]
+
+[project.scripts]
+rx0-capture = "sonyrx0.camera.capture:main"
+rx0-settings = "sonyrx0.camera.settings:main"
+rx0-stereo = "sonyrx0.camera.stereo_capture:main"
+rx0-board = "sonyrx0.stereo.make_board:main"
+rx0-calibrate = "sonyrx0.stereo.calibrate:main"
+rx0-depth = "sonyrx0.stereo.depth:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
